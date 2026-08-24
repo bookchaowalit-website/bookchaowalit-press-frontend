@@ -1,197 +1,61 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-function Shell({
-  title,
-  subtitle,
-  badge = "Portfolio demo · local-only",
-  children,
-}: {
-  title: string;
-  subtitle: string;
-  badge?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900 dark:bg-black dark:text-zinc-100">
-      <div className="mx-auto max-w-6xl px-4 py-10">
-        <header className="mb-8">
-          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">{badge}</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">{title}</h1>
-          <p className="mt-2 max-w-2xl text-sm text-zinc-600 dark:text-zinc-400">{subtitle}</p>
-        </header>
-        {children}
-        <footer className="mt-10 border-t border-zinc-200 pt-4 text-xs text-zinc-500 dark:border-zinc-800">
-          Honest demo: no multi-tenant backend. State (if any) stays in this browser.
-        </footer>
-      </div>
-    </div>
-  );
-}
-
-function Button({
-  children,
-  onClick,
-  variant = "primary",
-  disabled,
-  type = "button",
-  className = "",
-}: {
-  children: ReactNode;
-  onClick?: () => void;
-  variant?: "primary" | "secondary" | "ghost" | "danger";
-  disabled?: boolean;
-  type?: "button" | "submit";
-  className?: string;
-}) {
-  const base =
-    "inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition disabled:opacity-50 " +
-    className;
-  const styles =
-    variant === "primary"
-      ? "bg-zinc-900 text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900"
-      : variant === "secondary"
-        ? "bg-white text-zinc-900 ring-1 ring-zinc-200 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-100 dark:ring-zinc-700"
-        : variant === "danger"
-          ? "bg-red-600 text-white hover:bg-red-500"
-          : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900";
-  return (
-    <button type={type} disabled={disabled} onClick={onClick} className={`${base} ${styles}`}>
-      {children}
-    </button>
-  );
-}
-
-const inputClass =
-  "w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-950";
+type PressItem = { id: string; title: string; body: string; status: string; createdAt: number };
+const STATUS = ["Published", "Pitch", "Archive"] as const;
+const SEED: PressItem[] = [
+  { id: "1", title: "Local tech blog", body: "Featured interview", status: "Published", createdAt: 0 },
+  { id: "2", title: "Independent maker roundup", body: "Product note / pending", status: "Pitch", createdAt: 0 },
+];
 
 function useLocalStorage<T>(key: string, initial: T) {
-  const [value, setValue] = useState<T>(initial);
+  const [value, setValue] = useState(initial);
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw != null) setValue(JSON.parse(raw) as T);
-    } catch {
-      /* ignore */
-    }
+    try { const raw = localStorage.getItem(key); if (raw) setValue(JSON.parse(raw) as T); } catch { /* keep local seed */ }
     setReady(true);
   }, [key]);
-  useEffect(() => {
-    if (!ready) return;
-    localStorage.setItem(key, JSON.stringify(value));
-  }, [key, value, ready]);
+  useEffect(() => { if (ready) localStorage.setItem(key, JSON.stringify(value)); }, [key, ready, value]);
   return [value, setValue] as const;
 }
 
-function uid() {
-  return crypto.randomUUID();
-}
-
-async function copyText(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-
-type Item = { id: string; title: string; body: string; status: string; createdAt: number };
-
-const SEED: Item[] = [{"title": "Local tech blog", "body": "Featured interview", "status": "Published"}].map((x: any, i: number) => ({
-  id: String(x.id ?? i + 1),
-  title: x.title,
-  body: x.body,
-  status: x.status,
-  createdAt: x.createdAt ?? Date.now() - i * 86400000,
-}));
-
-const FIELDS = [{"key": "title", "label": "Title", "type": "text"}, {"key": "body", "label": "Details", "type": "textarea"}, {"key": "status", "label": "Status", "type": "select", "options": ["Draft", "Active", "Done"]}] as { key: "title" | "body" | "status"; label: string; type: string; options?: string[] }[];
-
 export default function Home() {
-  const [items, setItems] = useLocalStorage<Item[]>("press-v1", SEED);
+  const [items, setItems] = useLocalStorage<PressItem[]>("press-v1", SEED);
   const [query, setQuery] = useState("");
-  const [draft, setDraft] = useState<Record<string, string>>(() =>
-    Object.fromEntries(FIELDS.map((f) => [f.key, f.options?.[0] ?? ""]))
-  );
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [status, setStatus] = useState<(typeof STATUS)[number]>("Pitch");
+  const filtered = useMemo(() => items.filter((item) => `${item.title} ${item.body} ${item.status}`.toLowerCase().includes(query.toLowerCase())), [items, query]);
 
-  const filtered = items.filter((it) =>
-    (it.title + it.body + it.status).toLowerCase().includes(query.toLowerCase())
-  );
-
-  const add = () => {
-    if (!String(draft.title || "").trim()) return;
-    setItems((prev) => [
-      {
-        id: uid(),
-        title: draft.title || "",
-        body: draft.body || "",
-        status: draft.status || "",
-        createdAt: Date.now(),
-      },
-      ...prev,
-    ]);
-    setDraft(Object.fromEntries(FIELDS.map((f) => [f.key, f.options?.[0] ?? ""])));
+  const addMention = () => {
+    if (!title.trim()) return;
+    setItems((current) => [{ id: crypto.randomUUID(), title: title.trim(), body: body.trim() || "No detail added", status, createdAt: Date.now() }, ...current]);
+    setTitle(""); setBody(""); setStatus("Pitch");
   };
 
   return (
-    <Shell title="Press Kit" subtitle="Press mentions and asset notes.">
-      <div className="mb-4 flex flex-wrap gap-2">
-        <input className={`${inputClass} max-w-sm`} placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} />
-        <span className="self-center text-sm text-zinc-500">{filtered.length} items</span>
-      </div>
-      <div className="mb-6 grid gap-2 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950 md:grid-cols-2">
-        {FIELDS.map((f) => (
-          <label key={f.key} className="block space-y-1">
-            <span className="text-xs font-medium text-zinc-500">{f.label}</span>
-            {f.type === "textarea" ? (
-              <textarea
-                className={`${inputClass} min-h-[72px]`}
-                value={draft[f.key] || ""}
-                onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
-              />
-            ) : f.type === "select" ? (
-              <select
-                className={inputClass}
-                value={draft[f.key] || ""}
-                onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
-              >
-                {(f.options || []).map((o) => (
-                  <option key={o}>{o}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                className={inputClass}
-                value={draft[f.key] || ""}
-                onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
-              />
-            )}
-          </label>
-        ))}
-        <div className="md:col-span-2">
-          <Button onClick={add}>Add</Button>
-        </div>
-      </div>
-      <ul className="space-y-2">
-        {filtered.map((it) => (
-          <li key={it.id} className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <div className="font-medium">{it.title}</div>
-                <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{it.body}</p>
-                <span className="mt-2 inline-block rounded-full bg-zinc-100 px-2 py-0.5 text-xs dark:bg-zinc-900">{it.status}</span>
-              </div>
-              <Button variant="ghost" onClick={() => setItems((prev) => prev.filter((x) => x.id !== it.id))}>
-                Delete
-              </Button>
+    <main className="press-shell">
+      <div className="press-frame">
+        <header className="press-topbar"><a href="https://bookchaowalit.com" className="press-mark" aria-label="Bookchaowalit home"><span>PRESS</span> / ROOM</a><span>MENTIONS / ASSET NOTES</span><span>{items.length} LOCAL CLIPS</span></header>
+        <section className="press-intro"><div><h1>Keep the proof<br /><em>in the room.</em></h1><p>A small desk for the mention, the useful detail, and the note that tells you what is still only a pitch.</p></div><div className="press-stamp" aria-hidden="true"><span>LOCAL</span><b>02</b><span>NO CMS</span></div></section>
+
+        <section className="press-desk" aria-label="Press mention desk">
+          <aside className="press-index">
+            <div className="desk-head"><span>CLIP INDEX</span><span>{filtered.length} FOUND</span></div>
+            <label className="press-search"><span aria-hidden="true">/</span><span className="sr-only">Search mentions</span><input placeholder="Search mentions" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+            <div className="clip-list">{filtered.length ? filtered.map((item, index) => <div className="clip-row" key={item.id}><span className="clip-number">{String(index + 1).padStart(2, "0")}</span><div><strong>{item.title}</strong><small>{item.status} / {item.body}</small></div><button type="button" aria-label={`Delete ${item.title}`} onClick={() => setItems((current) => current.filter((candidate) => candidate.id !== item.id))}>×</button></div>) : <p className="empty-clips">No clipping matches this search.</p>}</div>
+          </aside>
+          <section className="press-sheet">
+            <div className="desk-head"><span>NEW CLIPPING / FIELD NOTE</span><span>LOCAL ONLY</span></div>
+            <div className="sheet-body"><p className="field-label">ADD TO THE INDEX</p><h2>Make a mention<br /><em>easy to find.</em></h2><p className="sheet-copy">Keep a clean title, one useful detail, and a state. This is a working record—not a published press page.</p>
+              <div className="press-form"><label><span>Title</span><input aria-label="Title" placeholder="Who said what?" value={title} onChange={(event) => setTitle(event.target.value)} /></label><label><span>Details</span><textarea aria-label="Details" placeholder="Link, angle, or asset note" value={body} onChange={(event) => setBody(event.target.value)} /></label><label><span>Status</span><select aria-label="Status" value={status} onChange={(event) => setStatus(event.target.value as (typeof STATUS)[number])}>{STATUS.map((item) => <option key={item}>{item}</option>)}</select></label><button type="button" className="add-mention" onClick={addMention}>Add mention</button></div>
             </div>
-          </li>
-        ))}
-      </ul>
-    </Shell>
+            <p className="boundary-note"><b>BROWSER LOCAL</b> / No upload, CMS, public feed, or newsroom sync is attached.</p>
+          </section>
+        </section>
+        <footer className="press-footer"><span>BOOK / DEV TOOLS</span><span>SEARCH · ADD · KEEP</span></footer>
+      </div>
+    </main>
   );
 }

@@ -19,6 +19,12 @@ See `README.md` for install and run instructions when present.
 - Not claimed as production-ready unless README and tests prove it.
 - Mobile smoke / emulator acceptance is separate and toolchain-dependent.
 
+## Current product truth
+
+This is a browser-local press-kit desk for searching, adding, and deleting
+authored press mentions or asset notes. It does not publish a press page,
+upload files, sync with a newsroom, or connect to a CMS.
+
 ## Source README excerpt
 
 ```
